@@ -1,17 +1,15 @@
 <?php
 defined( 'ABSPATH' ) OR exit;
 /*
-Plugin Name:  WordPress Post Type Archive Links
-Plugin URI:   https://github.com/stephenharris/WordPress-Post-Type-Archive-Links
-Description:  Adds a MetaBox to the Appearance > Menu page to add post type archive links
-Version:      1.1
+Plugin Name:  WordPress Author Archive Links
+Plugin URI:   https://github.com/mcguffin/WordPress-Author-Archive-Links
+Description:  Adds a MetaBox to the Appearance > Menu page to add Author archive links
+Version:      1.0
 Author:       Stephen Harris
 Author URI:   https://github.com/stephenharris/
-Author Email: contact@stephenharris.info
-Contributors: Franz Josef Kaiser <wecodemore@gmail.com>, Ryan Urban <ryan@fringewebdevelopment.com>
 License:      GPLv3
 License URI:  http://www.gnu.org/licenses/gpl.txt
-Text Domain:  hptal-textdomain
+Text Domain:  autarc-textdomain
 Domain Path:  /lang/
  
 	Copyright 2013 Stephen Harris (contact@stephenharris.info)
@@ -32,9 +30,9 @@ Domain Path:  /lang/
  */
 
 // Load at the default priority of 10
-add_action( 'plugins_loaded', array( 'Post_Type_Archive_Links', 'init' ) );
+add_action( 'plugins_loaded', array( 'Author_Archive_Links', 'init' ) );
 
-class Post_Type_Archive_Links {
+class Author_Archive_Links {
 	/**
 	 * Instance of the class
 	 * @static
@@ -47,19 +45,19 @@ class Post_Type_Archive_Links {
 	 * Nonce Value
 	 * @var string
 	 */
-	public $nonce = 'hptal_nonce';
+	public $nonce = 'autarc_nonce';
 
 	/**
 	 * ID of the custom metabox
 	 * @var string
 	 */
-	public $metabox_id = 'hptal-metabox';
+	public $metabox_id = 'autarc-metabox';
 
 	/**
 	 * ID of the custom post type list items
 	 * @var string
 	 */
-	public $metabox_list_id = 'post-type-archive-checklist';
+	public $metabox_list_id = 'author-archive-checklist';
 
 	/**
 	 * Instantiates the class
@@ -74,10 +72,10 @@ class Post_Type_Archive_Links {
 
 	/**
 	 * Constructor.
-	 * @return \Post_Type_Archive_Links
+	 * @return \Author_Archive_Links
 	 */
 	public function __construct() {
-		load_plugin_textdomain( 'hptal-textdomain' , false , dirname( plugin_basename( __FILE__ ) ) . '/lang/' );
+		load_plugin_textdomain( 'autarc-textdomain' , false , dirname( plugin_basename( __FILE__ ) ) . '/lang/' );
 		
 		add_action( 'admin_init', array( $this, 'add_meta_box' ) );
 		
@@ -89,7 +87,7 @@ class Post_Type_Archive_Links {
 
 		add_action( 'admin_enqueue_scripts', array( $this, 'metabox_script' ) );
 		
-		add_action( "wp_ajax_" . $this->nonce, array( $this, 'ajax_add_post_type' ) );
+		add_action( "wp_ajax_" . $this->nonce, array( $this, 'ajax_add_author_archive' ) );
 
 	}
 
@@ -112,7 +110,7 @@ class Post_Type_Archive_Links {
 	public function add_meta_box() {
 		add_meta_box(
 			$this->metabox_id,
-			__( 'Post Type Archives', 'hptal-textdomain' ),
+			__( 'Author Archives', 'autarc-textdomain' ),
 			array( $this, 'metabox' ),
 			'nav-menus',
 			'side',
@@ -132,18 +130,18 @@ class Post_Type_Archive_Links {
 			return;
 
 		wp_register_script(
-			'hptal-ajax-script',
+			'autarc-ajax-script',
 			plugins_url( 'metabox.js', __FILE__ ),
 			array( 'jquery' ),
 			filemtime( plugin_dir_path( __FILE__ ).'metabox.js' ),
 			true
 		);
-		wp_enqueue_script( 'hptal-ajax-script' );
+		wp_enqueue_script( 'autarc-ajax-script' );
 
 		// Add nonce variable
 		wp_localize_script(
-			'hptal-ajax-script',
-			'hptal_obj',
+			'autarc-ajax-script',
+			'autarc_obj',
 			array(
 				'ajaxurl'    => admin_url( 'admin-ajax.php' ),
 				'nonce'      => wp_create_nonce( $this->nonce ),
@@ -171,13 +169,18 @@ class Post_Type_Archive_Links {
 			),
 			'object'
 		);
-
+		
+		$authors = $this->_get_authors();
+/*
+		var_dump($authors);
+		exit();
+*/
 		$html = '<ul id="'. $this->metabox_list_id .'">';
-		foreach ( $post_types as $pt ) {
+		foreach ( $authors as $author ) {
 			$html .= sprintf(
 				'<li><label><input type="checkbox" value ="%s" />&nbsp;%s</label></li>',
-				esc_attr( $pt->name ),
-				esc_attr( $pt->labels->name )
+				esc_attr( $author->ID ),
+				esc_attr( $author->display_name )
 			);
 		}
 		$html .= '</ul>';
@@ -186,35 +189,45 @@ class Post_Type_Archive_Links {
 		$html .= '<p class="button-controls"><span class="add-to-menu">';
 		$html .= '<input type="submit"'. disabled( $nav_menu_selected_id, 0 ) .' class="button-secondary
 			  submit-add-to-menu right" value="'. esc_attr( 'Add to Menu' ) .'" 
-			  name="add-post-type-menu-item" id="submit-post-type-archives" />';
+			  name="add-author-menu-item" id="submit-author-archives" />';
 		$html .= '<span class="spinner"></span>';
 		$html .= '</span></p>';
 		
 		print $html;
 	}
-
+	
+	
+	private function _get_authors() {
+		global $wpdb;
+		$sql = "SELECT DISTINCT p.post_author AS ID, COUNT(p.ID) AS count_posts, u.display_name AS display_name FROM {$wpdb->posts} AS p
+				LEFT JOIN {$wpdb->users} AS u ON p.post_author = u.ID
+			WHERE post_type IN ('post','page') AND post_status='publish' GROUP BY post_author";
+		$authors_result = $wpdb->get_results($sql);
+		return $authors_result;
+	}
+	
 	/**
 	 * AJAX Callback to create the menu item and add it to menu
 	 * @return string $HTML built with walk_nav_menu_tree()
 	 */
-	public function ajax_add_post_type()
+	public function ajax_add_author_archive()
 	{
 		$this->is_allowed();
 
 		// Create menu items and store IDs in array
 		$item_ids = array();
-		foreach ( array_values( $_POST['post_types'] ) as $post_type )
+		foreach ( array_values( $_POST['authors'] ) as $user_id )
 		{
-			$post_type_obj = get_post_type_object( $post_type );
-
-			if( ! $post_type_obj )
+			$author = get_userdata( $user_id );
+	
+			if( ! $author )
 				continue;
 
 			$menu_item_data= array(
-				 'menu-item-title'  => esc_attr( $post_type_obj->labels->name )
-				,'menu-item-type'   => 'post_type_archive'
-				,'menu-item-object' => esc_attr( $post_type )
-				,'menu-item-url'    => get_post_type_archive_link( $post_type )
+				 'menu-item-title'  => $author->display_name
+				,'menu-item-type'   => 'author_archive'
+				,'menu-item-object' => $author->ID
+				,'menu-item-url'    => get_author_posts_url( $author->ID )
 			);
 
 			// Collect the items' IDs.
@@ -274,7 +287,7 @@ class Post_Type_Archive_Links {
 		check_ajax_referer( $this->nonce, 'nonce' );
 
 		// Is a post type chosen?
-		empty( $_POST['post_types'] ) AND exit;
+		empty( $_POST['authors'] ) AND exit;
 	}
 
 
@@ -284,11 +297,11 @@ class Post_Type_Archive_Links {
 	 * @return object $menu_item
 	 */
 	public function setup_archive_item( $menu_item ) {
-		if ( $menu_item->type !== 'post_type_archive' )
+		if ( $menu_item->type !== 'author_archive' )
 			return $menu_item;
 
-		$post_type = $menu_item->object;
-		$menu_item->url = get_post_type_archive_link( $post_type );
+		$author_id = $menu_item->object;
+		$menu_item->url = get_author_posts_url( $author_id );
 
 		return $menu_item;
 	}
@@ -296,19 +309,18 @@ class Post_Type_Archive_Links {
 
 	/**
 	 * Make post type archive link 'current'
-	 * @uses   Post_Type_Archive_Links :: get_item_ancestors()
+	 * @uses   Author_Archive_Links :: get_item_ancestors()
 	 * @param  array $items
 	 * @return array $items
 	 */
 	public function maybe_make_current( $items ) {
 		foreach ( $items as $item ) {
-			if ( 'post_type_archive' !== $item->type )
+			if ( 'author_archive' !== $item->type )
 				continue;
 
-			$post_type = $item->object;
+			$author_id = $item->object;
 			if (
-				! is_post_type_archive( $post_type )
-				AND ! is_singular( $post_type )
+				! is_author( $author_id )
 			)
 				continue;
 
