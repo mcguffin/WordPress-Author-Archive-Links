@@ -143,7 +143,7 @@ class Author_Archive_Links {
 			'autarc-ajax-script',
 			'autarc_obj',
 			array(
-				'ajaxurl'    => admin_url( 'admin-ajax.php' ),
+				'ajaxurl'    => admin_url( 'admin-ajax.php', 'relative' ),
 				'nonce'      => wp_create_nonce( $this->nonce ),
 				'metabox_id' => $this->metabox_id,
 				'metabox_list_id' => $this->metabox_list_id,
